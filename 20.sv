@@ -88,26 +88,31 @@ module cpu #(
 
 reg signed [DMSB:0] z;
 wire signed [DMSB:0] x, y, nxt_z;
-wire [2:0] src_x = inst[8:6];
-assign x = 
-	(src_x == 3'b111) ? rdata[DMSB:0] : 
-	(src_x == 3'b110) ? wdata[DMSB:0] : 
-	(src_x == 3'b101) ? addr[DMSB:0] : 
-	(src_x == 3'b100) ? inst[DMSB:0] : 
-	(src_x == 3'b011) ? pc[DMSB:0] : 
-	z;
-wire [2:0] src_y = inst[11:9];
-assign y = 
-	(src_y == 3'b111) ? rdata[DMSB:0] : 
-	(src_y == 3'b110) ? wdata[DMSB:0] : 
-	(src_y == 3'b101) ? addr[DMSB:0] : 
-	(src_y == 3'b100) ? inst[DMSB:0] : 
-	(src_y == 3'b011) ? pc[DMSB:0] : 
-	z;
+wire eq = ~|nxt_z;
+wire lt = nxt_z[DMSB];
+wire gt = ~|{eq,lt};
 
-wire dst_wdata = inst[12];
-wire dst_addr = inst[13];
-wire dst_pc = inst[14];
+wire [1:0] src_x = inst[9:8];
+assign x = 
+	(src_x == 2'b11) ? wdata[DMSB:0] : 
+	(src_x == 2'b01) ? addr[DMSB:0] : 
+	(src_x == 2'b10) ? pc[DMSB:0] : 
+	z;
+wire src_y = inst[10];
+assign y = 
+	(src_y == 1'b1) ? rdata[DMSB:0] : 
+	inst[DMSB:0];
+
+wire ena_jmp = inst[11];
+wire jeq = ena_jmp && inst[12];
+wire jlt = ena_jmp && inst[13];
+wire jgt = ena_jmp && inst[14];
+wire jmp = |{jlt&&lt,jgt&&gt,jeq&&eq};
+wire dst_pc = ena_jmp && jmp;
+
+wire dst_wdata = ~ena_jmp && inst[12];
+wire dst_addr = ~ena_jmp && inst[13];
+
 assign write = inst[15];
 
 alu #(
