@@ -150,7 +150,7 @@ end
 always@(negedge rstn or posedge clk) begin
 	if(!rstn) pc <= {(PMSB+1){1'b0}};
 	else if(setn) begin
-		if(dst_pc) pc <= nxt_z;
+		if(dst_pc) pc <= z;
 		else pc <= pc + 1;
 	end
 end
