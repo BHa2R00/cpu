@@ -83,10 +83,20 @@ unsigned char get_byte_addr(char* name){
 
 char* begin[(1<<(PMSB+1))]; unsigned char begin_pc[(1<<(PMSB+1))]; int begin_len = 0;
 
+unsigned char get_begin_pc(char* name){
+	unsigned char a = -1;
+	for(int k=0; k < begin_len; k++){
+		if(strcmp(name, begin[k]) == 0){
+			a = begin_pc[k];
+		}
+	}
+	return a;
+}
+
 unsigned char ram[(1<<(AMSB+1))];
 unsigned short rom[(1<<(PMSB+1))];
 
-void mark(FILE* in_fp){
+void mark(FILE* debug_fp, FILE* in_fp){
 	unsigned int pc = 0;
 	unsigned int addr = 0;
 	char data = 0;
@@ -123,7 +133,13 @@ void mark(FILE* in_fp){
 				for(int k = 0; k < (1<<(PMSB+1)); k++) rom[k] = 0;
 			}
 			else if(line_cdr(".endtext", line) != NULL){ line_st--; }
-			else if(line_cdr(".begin", line) != NULL){ line_st++; }
+			else if(line_cdr(".begin", line) != NULL){ 
+				line_st++; 
+				begin[begin_len] = new_string(strlen(line));
+				begin[begin_len] = line_car(".", line);
+				begin_pc[begin_len] = pc;
+				begin_len++;
+			}
 			else if(line_cdr(".end", line) != NULL){ line_st--; }
 			else if(line_st <= -2){ ; }
 			else if(line_st >= 2){
@@ -144,12 +160,13 @@ void mark(FILE* in_fp){
 	}
 }
 
-void encode(FILE* in_fp, FILE* out_fp){
+void encode(FILE* debug_fp, FILE* in_fp, FILE* out_fp){
 	unsigned int pc = 0;
 	unsigned int addr = 0;
 	char data = 0;
 	char line_st = 0;
 	unsigned short inst = 0;
+	char inst_num;
 	while(!feof(in_fp)){
 		char* line = new_string((1<<(DMSB+1)));
 		fgets(line, (1<<(DMSB+1))+1, in_fp);
@@ -232,6 +249,7 @@ void encode(FILE* in_fp, FILE* out_fp){
 							b = line_cdr(" ", line0);
 							if(line_cdr("a", b) != NULL) inst = inst | (0x1<<13);
 							if(line_cdr("d", b) != NULL) inst = inst | (0x1<<12);
+							free(b);
 						}
 						else if(line_cdr("src_x", line0) != NULL){
 							char* b = new_string(strlen(line0));
@@ -240,12 +258,41 @@ void encode(FILE* in_fp, FILE* out_fp){
 							else if(line_cdr("a", b) != NULL) inst = inst | (0x1<<8);
 							else if(line_cdr("p", b) != NULL) inst = inst | (0x2<<8);
 							else if(line_cdr("z", b) != NULL) inst = inst | (0x0<<8);
+							free(b);
 						}
 						else if(line_cdr("src_y", line0) != NULL){
 							char* b = new_string(strlen(line0));
 							b = line_cdr(" ", line0);
 							if(line_cdr("m", b) != NULL) inst = inst | (0x1<<10);
 							else if(line_cdr("inst", b) != NULL) inst = inst | (0x0<<10);
+							free(b);
+						}
+						else if(line_cdr("byte", line0) != NULL){
+							inst = inst & 0xff00;
+							char* b = new_string(strlen(line0));
+							b = line_cdr(" ", line0);
+							while(b[0] == ' ' || b[0] == '	') b++;
+							inst_num = get_byte_addr(b);
+							inst = inst | (0x00ff & inst_num);
+							free(b);
+						}
+						else if(line_cdr("begin", line0) != NULL){
+							inst = inst & 0xff00;
+							char* b = new_string(strlen(line0));
+							b = line_cdr(" ", line0);
+							while(b[0] == ' ' || b[0] == '	') b++;
+							inst_num = get_begin_pc(b);
+							inst = inst | (0x00ff & inst_num);
+							free(b);
+						}
+						else if(line_cdr("inst", line0) != NULL){
+							inst = inst & 0xff00;
+							char* b = new_string(strlen(line0));
+							b = line_cdr(" ", line0);
+							while(b[0] == ' ' || b[0] == '	') b++;
+							sscanf(b, "%d.", &inst_num);
+							inst = inst | (0x00ff & inst_num);
+							free(b);
 						}
 						else if(line_cdr("alu", line0) != NULL){
 							char* b = new_string(strlen(line0));
@@ -258,6 +305,7 @@ void encode(FILE* in_fp, FILE* out_fp){
 							if(line_cdr("inv_y", b) != NULL) inst = inst | (0x1<<2);
 							if(line_cdr("zero_x", b) != NULL) inst = inst | (0x1<<1);
 							if(line_cdr("zero_y", b) != NULL) inst = inst | (0x1<<0);
+							free(b);
 						}
 						else if(line_cdr("jmp", line0) != NULL){
 							char* b = new_string(strlen(line0));
@@ -266,6 +314,7 @@ void encode(FILE* in_fp, FILE* out_fp){
 							if(line_cdr("eq", b) != NULL) inst = inst | (0x1<<12);
 							if(line_cdr("lt", b) != NULL) inst = inst | (0x1<<13);
 							if(line_cdr("gt", b) != NULL) inst = inst | (0x1<<14);
+							free(b);
 						}
 					}
 					line = line_cdr(".", line); if(line != NULL) line++;
@@ -285,9 +334,11 @@ void encode(FILE* in_fp, FILE* out_fp){
 int main(int argc, char** argv){
 	int i;
 	char* out_file = "a.bin";
-	char* in_file = "a.asm";
+	char* in_file = "no input file";
+	char* debug_file = "a.debug";
 	FILE* in_fp;
 	FILE* out_fp;
+	FILE* debug_fp;
 	for(i = 1; i < argc; i++){
 		if(strcmp(argv[i], "-o") == 0){
 			out_file = argv[i+1];
@@ -295,12 +346,26 @@ int main(int argc, char** argv){
 		else if(strcmp(argv[i], "-i") == 0){
 			in_file = argv[i+1];
 		}
+		else if(strcmp(argv[i], "-d") == 0){
+			debug_file = argv[i+1];
+		}
 	}
-	in_fp = fopen(in_file, "r"); 
-	mark(in_fp); 
-	fclose(in_fp);
-	in_fp = fopen(in_file, "r"); out_fp = fopen(out_file, "wb");
-	encode(in_fp, out_fp); 
-	fclose(out_fp); fclose(in_fp);
+	if(strcmp(in_file, "no input file") != 0){
+		debug_fp = fopen(debug_file, "w"); 
+		in_fp = fopen(in_file, "r"); 
+		fprintf(debug_fp, "%s\n", in_file);
+		fprintf(debug_fp, "%s\n", out_file);
+		mark(debug_fp, in_fp); 
+		fclose(in_fp);
+		in_fp = fopen(in_file, "r"); out_fp = fopen(out_file, "wb");
+		encode(debug_fp, in_fp, out_fp); 
+		fclose(out_fp); fclose(in_fp);
+		fclose(debug_fp);
+	}
+	else {
+		printf("-o <output_bin>, a.bin by default\n");
+		printf("-i <input_asm>\n");
+		printf("-d <debug_db>, a.debug by default\n");
+	}
 	return 0;
 }
