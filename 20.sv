@@ -77,6 +77,7 @@ module cpu #(
 	parameter AMSB = 7, 
 	parameter DMSB = 7 
 )(
+	output idle, 
 	input signed [DMSB:0] rdata, 
 	output write, 
 	output reg signed [DMSB:0] wdata, 
@@ -115,7 +116,7 @@ wire dst_addr = ~ena_jmp && inst[13];
 
 assign write = inst[15];
 
-wire swsetn = inst != 16'd0;
+assign idle = inst == 16'd0 || pc == {(PMSB+1){1'b1}};
 
 alu #(
 	. MSB (DMSB)
@@ -132,28 +133,28 @@ alu #(
 
 always@(negedge rstn or posedge clk) begin
 	if(!rstn) z <= {(DMSB+1){1'b0}};
-	else if(setn && swsetn) z <= nxt_z;
+	else if(setn && ~idle) z <= nxt_z;
 end
 
 always@(negedge rstn or posedge clk) begin
 	if(!rstn) wdata <= {(DMSB+1){1'b0}};
-	else if(setn && swsetn) begin
+	else if(setn && ~idle) begin
 		if(dst_wdata) wdata <= nxt_z;
 	end
 end
 
 always@(negedge rstn or posedge clk) begin
 	if(!rstn) addr <= {(AMSB+1){1'b0}};
-	else if(setn && swsetn) begin
+	else if(setn && ~idle) begin
 		if(dst_addr) addr <= nxt_z;
 	end
 end
 
 always@(negedge rstn or posedge clk) begin
 	if(!rstn) pc <= {(PMSB+1){1'b0}};
-	else if(setn && swsetn) begin
+	else if(setn && ~idle) begin
 		if(dst_pc) pc <= z;
-		else if(pc != {(PMSB+1){1'b1}}) pc <= pc + 1;
+		else pc <= pc + 1;
 	end
 end
 
@@ -180,6 +181,7 @@ reg [PMSB:0] pc;
 reg [IMSB:0] inst;
 
 reg [511:0] line;
+initial line = 0;
 task debug_line;
 	reg [PMSB:0] debug_pc;
 	reg [511:0] debug_line;
@@ -208,6 +210,28 @@ reg rstn, setn, clk;
 initial clk = 0;
 always #1 clk = ~clk;
 
+wire write;
+wire [DMSB:0] nxt_wdata;
+wire [AMSB:0] nxt_addr;
+wire [PMSB:0] nxt_pc;
+wire idle;
+
+cpu #(
+	.IMSB ( IMSB), 
+	.PMSB ( PMSB), 
+	.AMSB ( 7), 
+	.DMSB ( 7 )
+) u_cpu(
+	.idle(idle), 
+	.rdata(rdata), 
+	.write(write), 
+	.wdata(nxt_wdata), 
+	.addr(nxt_addr), 
+	.inst(inst), 
+	.pc(nxt_pc), 
+	.rstn(rstn), .setn(setn), .clk(clk) 
+);
+
 initial begin
 	$dumpfile("a.fst");
 	$dumpvars(0, cpu_tb_1);
@@ -217,8 +241,12 @@ initial begin
 	$fclose(debug_fp);
 	in_fp = $fopen(in_file,"r");
 	out_fp = $fopen(out_file,"rb");
+	rstn = 0;
+	setn = 0;
 	addr = 0;
 	pc = 0;
+	inst = 0;
+	rdata = 0;
 	$write("load ram\n");
 	repeat(1<<(AMSB+1)) begin
 		$fscanf(out_fp, "%c", wdata);
@@ -236,6 +264,22 @@ initial begin
 		debug_line;
 		@(posedge clk);
 		pc = pc + 1;
+	end
+	repeat(3) begin
+		$write("load inst\n");
+		pc = 0;
+		repeat(2) @(posedge clk); rstn = 1;
+		repeat(2) @(posedge clk); setn = 1;
+		do begin
+			addr = nxt_addr;
+				wdata = nxt_wdata;
+			pc = nxt_pc;
+			@(posedge clk);
+			if(write) rdata = ram[addr];
+			inst = rom[pc];
+		end while(!idle);
+		repeat(2) @(posedge clk); rstn = 0;
+		repeat(2) @(posedge clk); setn = 0;
 	end
 	$fclose(in_fp);
 	$fclose(out_fp);
