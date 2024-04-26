@@ -186,6 +186,7 @@ void encode(FILE* in_fp, FILE* out_fp){
 						if(line_cdr("\"", line0) != NULL){
 							char* b = new_string(strlen(line));
 							sscanf(line0, "\"%s\"", b);
+							b[strlen(b)-1] = '\0';
 							for(int k = 0; k < strlen(b); k++){
 								ram[addr] = *(b+k);
 								addr++;
