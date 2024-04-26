@@ -115,6 +115,8 @@ wire dst_addr = ~ena_jmp && inst[13];
 
 assign write = inst[15];
 
+wire swsetn = inst != 16'd0;
+
 alu #(
 	. MSB (DMSB)
 ) u_alu(
@@ -130,28 +132,28 @@ alu #(
 
 always@(negedge rstn or posedge clk) begin
 	if(!rstn) z <= {(DMSB+1){1'b0}};
-	else if(setn) z <= nxt_z;
+	else if(setn && swsetn) z <= nxt_z;
 end
 
 always@(negedge rstn or posedge clk) begin
 	if(!rstn) wdata <= {(DMSB+1){1'b0}};
-	else if(setn) begin
+	else if(setn && swsetn) begin
 		if(dst_wdata) wdata <= nxt_z;
 	end
 end
 
 always@(negedge rstn or posedge clk) begin
 	if(!rstn) addr <= {(AMSB+1){1'b0}};
-	else if(setn) begin
+	else if(setn && swsetn) begin
 		if(dst_addr) addr <= nxt_z;
 	end
 end
 
 always@(negedge rstn or posedge clk) begin
 	if(!rstn) pc <= {(PMSB+1){1'b0}};
-	else if(setn) begin
+	else if(setn && swsetn) begin
 		if(dst_pc) pc <= z;
-		else pc <= pc + 1;
+		else if(pc != {(PMSB+1){1'b1}}) pc <= pc + 1;
 	end
 end
 
