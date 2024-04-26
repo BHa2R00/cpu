@@ -160,6 +160,13 @@ void mark(FILE* debug_fp, FILE* in_fp){
 	}
 }
 
+void write_debug_line(FILE* debug_fp, unsigned int pc, char* line){
+	int len = strlen(line);
+	fprintf(debug_fp, "%c", (char)pc);
+	fprintf(debug_fp, "%c", (char)len);
+	fprintf(debug_fp, "%s", line);
+}
+
 void encode(FILE* debug_fp, FILE* in_fp, FILE* out_fp){
 	unsigned int pc = 0;
 	unsigned int addr = 0;
@@ -172,8 +179,11 @@ void encode(FILE* debug_fp, FILE* in_fp, FILE* out_fp){
 		fgets(line, (1<<(DMSB+1))+1, in_fp);
 		line[strlen(line)-1] = '\0';
 		while(line[0] == ' ' || line[0] == '	') line++;
-		if(line[0] == '*'){ ; }
+		if(line[0] == '*'){
+			write_debug_line(debug_fp, pc, line);
+		}
 		else if((line[0] == '.') || (line[0] >= 33 && line[0] <= 126)){
+			write_debug_line(debug_fp, pc, line);
 			if(line_cdr(".macro", line) != NULL){ 
 				char* b = new_string(strlen(line));
 				b = line_car(".", line);
@@ -351,7 +361,7 @@ int main(int argc, char** argv){
 		}
 	}
 	if(strcmp(in_file, "no input file") != 0){
-		debug_fp = fopen(debug_file, "w"); 
+		debug_fp = fopen(debug_file, "wb"); 
 		in_fp = fopen(in_file, "r"); 
 		fprintf(debug_fp, "%s\n", in_file);
 		fprintf(debug_fp, "%s\n", out_file);
