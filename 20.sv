@@ -158,3 +158,88 @@ always@(negedge rstn or posedge clk) begin
 end
 
 endmodule
+
+
+module cpu_tb_1;
+
+reg [511:0] in_file;
+reg [511:0] out_file;
+integer debug_fp, in_fp, out_fp;
+
+parameter IMSB = 15;
+parameter PMSB = 7;
+parameter AMSB = 7; 
+parameter DMSB = 7;
+
+reg [7:0] ram[0:(1<<AMSB)-1];
+reg [AMSB:0] addr;
+reg [DMSB:0] wdata, rdata;
+
+reg [15:0] rom[0:(1<<PMSB)-1];
+reg [PMSB:0] pc;
+reg [IMSB:0] inst;
+
+reg [511:0] line;
+task debug_line;
+	reg [PMSB:0] debug_pc;
+	reg [511:0] debug_line;
+	reg [7:0] debug_line_len;
+	reg [7:0] debug_line_char;
+	begin
+		debug_fp = $fopen("a.debug","r");
+		$fscanf(debug_fp, "%s\n", in_file);
+		$fscanf(debug_fp, "%s\n", out_file);
+		while(!$feof(debug_fp)) begin
+			$fscanf(debug_fp, "%c", debug_pc);
+			$fscanf(debug_fp, "%c", debug_line_len);
+			debug_line = 512'd0;
+			repeat(debug_line_len) begin
+				$fscanf(debug_fp, "%c", debug_line_char);
+				debug_line = {debug_line[511-8:0],debug_line_char};
+			end
+			if(pc == debug_pc) line = debug_line;
+		end
+		$fclose(debug_fp);
+	end
+endtask
+
+reg rstn, setn, clk;
+
+initial clk = 0;
+always #1 clk = ~clk;
+
+initial begin
+	$dumpfile("a.fst");
+	$dumpvars(0, cpu_tb_1);
+	debug_fp = $fopen("a.debug","rb");
+	$fscanf(debug_fp, "%s\n", in_file);
+	$fscanf(debug_fp, "%s\n", out_file);
+	$fclose(debug_fp);
+	in_fp = $fopen(in_file,"r");
+	out_fp = $fopen(out_file,"rb");
+	addr = 0;
+	pc = 0;
+	$write("load ram\n");
+	repeat(1<<(AMSB+1)) begin
+		$fscanf(out_fp, "%c", wdata);
+		ram[addr] = wdata;
+		@(posedge clk);
+		addr = addr + 1;
+	end
+	$write("load rom\n");
+	repeat(1<<(PMSB+1)) begin
+		$fscanf(out_fp, "%c", rdata);
+		inst = 16'h00ff & rdata;
+		$fscanf(out_fp, "%c", rdata);
+		inst = (inst << 8) | (16'h00ff & rdata);
+		rom[pc] = inst;
+		debug_line;
+		@(posedge clk);
+		pc = pc + 1;
+	end
+	$fclose(in_fp);
+	$fclose(out_fp);
+	$finish;
+end
+
+endmodule
