@@ -341,40 +341,44 @@ void encode(FILE* debug_fp, FILE* in_fp, FILE* out_fp){
 	fwrite(&rom, sizeof(unsigned short), (1<<(PMSB+1)), out_fp);
 }
 
-int main(int argc, char** argv){
-	int i;
-	char* out_file = "a.bin";
-	char* in_file = "no input file";
-	char* debug_file = "a.debug";
+void assembler(char* debug_file, char* in_file, char* out_file){
 	FILE* in_fp;
 	FILE* out_fp;
 	FILE* debug_fp;
+	debug_fp = fopen(debug_file, "wb"); 
+	in_fp = fopen(in_file, "r"); 
+	fprintf(debug_fp, "%s\n", in_file);
+	fprintf(debug_fp, "%s\n", out_file);
+	mark(debug_fp, in_fp); 
+	fclose(in_fp);
+	in_fp = fopen(in_file, "r"); out_fp = fopen(out_file, "wb");
+	encode(debug_fp, in_fp, out_fp); 
+	fclose(out_fp); fclose(in_fp);
+	fclose(debug_fp);
+}
+
+int main(int argc, char** argv){
+	int i;
+	char* out_file = "a.bin";
+	char* asm_file = "no input file";
+	char* debug_file = "a.debug";
 	for(i = 1; i < argc; i++){
 		if(strcmp(argv[i], "-o") == 0){
 			out_file = argv[i+1];
 		}
-		else if(strcmp(argv[i], "-i") == 0){
-			in_file = argv[i+1];
+		else if(strcmp(argv[i], "-asm") == 0){
+			asm_file = argv[i+1];
 		}
 		else if(strcmp(argv[i], "-d") == 0){
 			debug_file = argv[i+1];
 		}
 	}
-	if(strcmp(in_file, "no input file") != 0){
-		debug_fp = fopen(debug_file, "wb"); 
-		in_fp = fopen(in_file, "r"); 
-		fprintf(debug_fp, "%s\n", in_file);
-		fprintf(debug_fp, "%s\n", out_file);
-		mark(debug_fp, in_fp); 
-		fclose(in_fp);
-		in_fp = fopen(in_file, "r"); out_fp = fopen(out_file, "wb");
-		encode(debug_fp, in_fp, out_fp); 
-		fclose(out_fp); fclose(in_fp);
-		fclose(debug_fp);
+	if(strcmp(asm_file, "no input file") != 0){
+		assembler(debug_file, asm_file, out_file);
 	}
 	else {
 		printf("-o <output_bin>, a.bin by default\n");
-		printf("-i <input_asm>\n");
+		printf("-asm <input_asm>\n");
 		printf("-d <debug_db>, a.debug by default\n");
 	}
 	return 0;
