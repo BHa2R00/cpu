@@ -114,10 +114,6 @@ wire dst_pc = ena_jmp && jmp;
 wire dst_wdata = ~ena_jmp && inst[12];
 wire dst_addr = ~ena_jmp && inst[13];
 
-assign write = inst[15];
-
-assign idle = inst == 16'd0 || pc == {(PMSB+1){1'b1}};
-
 alu #(
 	. MSB (DMSB)
 ) u_alu(
@@ -130,6 +126,9 @@ alu #(
 	.sel_zero_x(inst[1]), .sel_zero_y(inst[0]), 
 	.x(x), .y(y) 
 );
+
+assign idle = (inst == {(IMSB+1){1'b0}}) || (pc == {(PMSB+1){1'b1}});
+assign write = inst[15];
 
 always@(negedge rstn or posedge clk) begin
 	if(!rstn) z <= {(DMSB+1){1'b0}};
@@ -152,6 +151,7 @@ end
 
 always@(negedge rstn or posedge clk) begin
 	if(!rstn) pc <= {(PMSB+1){1'b0}};
+	else if(!setn) pc <= {(PMSB+1){1'b0}};
 	else if(setn && ~idle) begin
 		if(dst_pc) pc <= z;
 		else pc <= pc + 1;
@@ -161,28 +161,75 @@ end
 endmodule
 
 
-module cpu_tb_1;
 
-reg [511:0] in_file;
-reg [511:0] out_file;
-integer debug_fp, in_fp, out_fp;
+`timescale 1ns/1ps
+
+module cpu_tb_1;
 
 parameter IMSB = 15;
 parameter PMSB = 7;
 parameter AMSB = 7; 
 parameter DMSB = 7;
 
-reg [7:0] ram[0:(1<<AMSB)-1];
-reg [AMSB:0] addr;
-reg [DMSB:0] wdata, rdata;
+reg rstn, setn, clk;
 
+initial clk = 0;
+always #1 clk = ~clk;
+
+reg [255:0] in_file;
+reg [255:0] out_file;
+integer debug_fp, in_fp, out_fp;
+
+reg [7:0] ram[0:(1<<AMSB)-1];
 reg [15:0] rom[0:(1<<PMSB)-1];
-reg [PMSB:0] pc;
-reg [IMSB:0] inst;
+
+reg loader_ram, loader_rom;
+reg [AMSB:0] loader_addr;
+reg [DMSB:0] loader_wdata;
+reg [PMSB:0] loader_pc;
+reg [IMSB:0] loader_inst;
+
+wire write;
+wire [DMSB:0] wdata;
+wire [AMSB:0] addr;
+wire [PMSB:0] pc;
+wire [DMSB:0] rdata = ram[addr];
+wire [IMSB:0] inst = rom[pc];
+wire idle;
+
+cpu #(
+	.IMSB ( IMSB ), 
+	.PMSB ( PMSB ), 
+	.AMSB ( AMSB ), 
+	.DMSB ( DMSB )
+) u_cpu(
+	.idle(idle), 
+	.rdata(rdata), 
+	.write(write), 
+	.wdata(wdata), 
+	.addr(addr), 
+	.inst(inst), 
+	.pc(pc), 
+	.rstn(rstn), .setn(setn), .clk(clk) 
+);
+
+always@(negedge rstn or posedge clk) begin
+	if(!rstn) begin
+	end
+	else if(loader_ram) begin
+		ram[loader_addr] <= loader_wdata;
+	end
+	else if(loader_rom) begin
+		rom[loader_pc] <= loader_inst;
+	end
+	else if(setn) begin
+		if(write) ram[addr] <= wdata;
+	end
+end
 
 reg [511:0] line;
 initial line = 0;
-task debug_line;
+task debug_line(input bit [PMSB:0] in_pc);
 	reg [PMSB:0] debug_pc;
 	reg [511:0] debug_line;
 	reg [7:0] debug_line_len;
@@ -199,38 +246,62 @@ task debug_line;
 				$fscanf(debug_fp, "%c", debug_line_char);
 				debug_line = {debug_line[511-8:0],debug_line_char};
 			end
-			if(pc == debug_pc) line = debug_line;
+			if(in_pc == debug_pc) line = debug_line;
 		end
 		$fclose(debug_fp);
 	end
 endtask
 
-reg rstn, setn, clk;
+task load_ram;
+	begin
+		loader_ram = 1;
+		loader_addr = 0;
+		$write("load ram\n");
+		@(posedge clk);
+		repeat(1<<(AMSB+1)) begin
+			$fscanf(out_fp, "%c", loader_wdata);
+			@(posedge clk);
+			loader_addr = loader_addr + 1;
+		end
+		loader_ram = 0;
+	end
+endtask
 
-initial clk = 0;
-always #1 clk = ~clk;
+task load_rom;
+	reg [7:0] pdata;
+	begin
+		loader_rom = 1;
+		loader_pc = 0;
+		$write("load rom\n");
+		@(posedge clk);
+		repeat(1<<(PMSB+1)) begin
+			$fscanf(out_fp, "%c", pdata);
+			loader_inst = 16'h00ff & pdata;
+			$fscanf(out_fp, "%c", pdata);
+			loader_inst = (loader_inst << 8) | (16'h00ff & pdata);
+			//debug_line(loader_pc);
+			@(posedge clk);
+			loader_pc = loader_pc + 1;
+		end
+		loader_rom = 0;
+	end
+endtask
 
-wire write;
-wire [DMSB:0] nxt_wdata;
-wire [AMSB:0] nxt_addr;
-wire [PMSB:0] nxt_pc;
-wire idle;
+task print_cpu_state;
+	$write("rdata = 0x%02x:%d:'%c', ", rdata, rdata, rdata);
+	$write("wdata = 0x%02x:%d:'%c', ", wdata, wdata, wdata);
+	$write("addr = 0x%02x:%d:'%c', ", addr, addr, addr);
+	$write("pc = 0x%02x, ", pc);
+	$write("inst = %016b, %04x, ", inst, inst);
+	$write("%s\n", line);
+endtask
 
-cpu #(
-	.IMSB ( IMSB), 
-	.PMSB ( PMSB), 
-	.AMSB ( 7), 
-	.DMSB ( 7 )
-) u_cpu(
-	.idle(idle), 
-	.rdata(rdata), 
-	.write(write), 
-	.wdata(nxt_wdata), 
-	.addr(nxt_addr), 
-	.inst(inst), 
-	.pc(nxt_pc), 
-	.rstn(rstn), .setn(setn), .clk(clk) 
-);
+reg [PMSB:0] cur_pc;
+wire xor_pc = setn ? (pc ^ cur_pc) : (loader_pc ^ cur_pc);
+always@(posedge xor_pc or posedge rstn) begin
+	debug_line(setn ? pc : loader_pc);
+	#0.1 cur_pc = setn ? pc : loader_pc;
+end
 
 initial begin
 	$dumpfile("a.fst");
@@ -243,40 +314,26 @@ initial begin
 	out_fp = $fopen(out_file,"rb");
 	rstn = 0;
 	setn = 0;
-	addr = 0;
-	pc = 0;
-	inst = 0;
-	rdata = 0;
-	$write("load ram\n");
-	repeat(1<<(AMSB+1)) begin
-		$fscanf(out_fp, "%c", wdata);
-		ram[addr] = wdata;
-		@(posedge clk);
-		addr = addr + 1;
-	end
-	$write("load rom\n");
-	repeat(1<<(PMSB+1)) begin
-		$fscanf(out_fp, "%c", rdata);
-		inst = 16'h00ff & rdata;
-		$fscanf(out_fp, "%c", rdata);
-		inst = (inst << 8) | (16'h00ff & rdata);
-		rom[pc] = inst;
-		debug_line;
-		@(posedge clk);
-		pc = pc + 1;
-	end
+	cur_pc = 0;
+	loader_ram = 0;
+	loader_addr = 0;
+	loader_wdata = 0;
+	loader_rom = 0;
+	loader_pc = 0;
+	loader_inst = 0;
+	repeat(2) @(posedge clk); rstn = 1;
+	load_ram;
+	repeat(2) @(posedge clk); rstn = 0;
+	repeat(2) @(posedge clk); rstn = 1;
+	load_rom;
+	repeat(2) @(posedge clk); rstn = 0;
 	repeat(3) begin
 		$write("load inst\n");
-		pc = 0;
 		repeat(2) @(posedge clk); rstn = 1;
 		repeat(2) @(posedge clk); setn = 1;
 		do begin
-			addr = nxt_addr;
-				wdata = nxt_wdata;
-			pc = nxt_pc;
+			print_cpu_state;
 			@(posedge clk);
-			if(write) rdata = ram[addr];
-			inst = rom[pc];
 		end while(!idle);
 		repeat(2) @(posedge clk); rstn = 0;
 		repeat(2) @(posedge clk); setn = 0;
@@ -287,3 +344,4 @@ initial begin
 end
 
 endmodule
+
