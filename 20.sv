@@ -87,48 +87,44 @@ module cpu #(
 	input rstn, setn, clk 
 );
 
+wire inum = ~inst[IMSB];
 reg signed [DMSB:0] z;
 wire signed [DMSB:0] x, y, nxt_z;
 wire eq = ~|nxt_z;
 wire lt = nxt_z[DMSB];
 wire gt = ~|{eq,lt};
 
-wire [1:0] src_x = inst[9:8];
+wire [1:0] src = inst[9:8];
 assign x = 
-	(src_x == 2'b11) ? wdata[DMSB:0] : 
-	(src_x == 2'b01) ? addr[DMSB:0] : 
-	(src_x == 2'b10) ? pc[DMSB:0] : 
+	(src == 2'b11) ? rdata[DMSB:0] : 
+	(src == 2'b01) ? addr[DMSB:0] : 
+	(src == 2'b10) ? pc[DMSB:0] : 
 	z;
-wire src_y = inst[10];
-assign y = 
-	(src_y == 1'b1) ? rdata[DMSB:0] : 
-	inst[DMSB:0];
+assign y = inum ? inst[DMSB:0] : wdata[DMSB:0];
+assign write = inum ? 1'b0 : inst[7];
 
-wire ena_jmp = inst[11];
-wire jeq = ena_jmp && inst[12];
-wire jlt = ena_jmp && inst[13];
-wire jgt = ena_jmp && inst[14];
+wire jeq = inst[10];
+wire jlt = inst[11];
+wire jgt = inst[12];
 wire jmp = |{jlt&&lt,jgt&&gt,jeq&&eq};
-wire dst_pc = ena_jmp && jmp;
 
-wire dst_wdata = ~ena_jmp && inst[12];
-wire dst_addr = ~ena_jmp && inst[13];
+wire dst_wdata = inst[13];
+wire dst_addr = inst[14];
 
 alu #(
 	. MSB (DMSB)
 ) u_alu(
 	.z(nxt_z), 
-	.sel_rbo_z(inst[7]), 
-	.sel_shl_z(inst[5]), 
-	.sel_inv_z(inst[5]), 
-	.sel_add(inst[4]), 
-	.sel_inv_x(inst[3]), .sel_inv_y(inst[2]), 
-	.sel_zero_x(inst[1]), .sel_zero_y(inst[0]), 
+	.sel_inv_z(inum ? 1'b0 : inst[6]), 
+	.sel_rbo_z(inum ? 1'b0 : inst[5]), 
+	.sel_shl_z(1'b0), 
+	.sel_add(inum ? 1'b0 : inst[4]), 
+	.sel_inv_x(inum ? 1'b1 : inst[3]), .sel_inv_y(inum ? 1'b0 : inst[2]), 
+	.sel_zero_x(inum ? 1'b1 : inst[1]), .sel_zero_y(inum ? 1'b0 : inst[0]), 
 	.x(x), .y(y) 
 );
 
 assign idle = (inst == {(IMSB+1){1'b0}}) || (pc == {(PMSB+1){1'b1}});
-assign write = inst[15];
 
 always@(negedge rstn or posedge clk) begin
 	if(!rstn) z <= {(DMSB+1){1'b0}};
@@ -153,7 +149,7 @@ always@(negedge rstn or posedge clk) begin
 	if(!rstn) pc <= {(PMSB+1){1'b0}};
 	else if(!setn) pc <= {(PMSB+1){1'b0}};
 	else if(setn && ~idle) begin
-		if(dst_pc) pc <= z;
+		if(jmp) pc <= z;
 		else pc <= pc + 1;
 	end
 end
@@ -254,6 +250,7 @@ endtask
 
 task load_ram;
 	begin
+		repeat(2) @(negedge clk); rstn = 1;
 		loader_ram = 1;
 		loader_addr = 0;
 		$write("load ram\n");
@@ -264,12 +261,14 @@ task load_ram;
 			loader_addr = loader_addr + 1;
 		end
 		loader_ram = 0;
+		repeat(2) @(negedge clk); rstn = 0;
 	end
 endtask
 
 task load_rom;
 	reg [7:0] pdata;
 	begin
+		repeat(2) @(negedge clk); rstn = 1;
 		loader_rom = 1;
 		loader_pc = 0;
 		$write("load rom\n");
@@ -278,12 +277,12 @@ task load_rom;
 			$fscanf(out_fp, "%c", pdata);
 			loader_inst = 16'h00ff & pdata;
 			$fscanf(out_fp, "%c", pdata);
-			loader_inst = (loader_inst << 8) | (16'h00ff & pdata);
-			//debug_line(loader_pc);
+			loader_inst = loader_inst | ((16'h00ff & pdata) << 8);
 			@(posedge clk);
 			loader_pc = loader_pc + 1;
 		end
 		loader_rom = 0;
+		repeat(2) @(negedge clk); rstn = 0;
 	end
 endtask
 
@@ -303,6 +302,20 @@ always@(posedge xor_pc or posedge rstn) begin
 	#0.1 cur_pc = setn ? pc : loader_pc;
 end
 
+task load_inst;
+	begin
+		$write("load inst\n");
+		repeat(2) @(negedge clk); rstn = 1;
+		repeat(2) @(negedge clk); setn = 1;
+		do begin
+			print_cpu_state;
+			@(negedge clk);
+		end while(!idle);
+		repeat(2) @(negedge clk); setn = 0;
+		repeat(2) @(negedge clk); rstn = 0;
+	end
+endtask
+
 initial begin
 	$dumpfile("a.fst");
 	$dumpvars(0, cpu_tb_1);
@@ -321,23 +334,9 @@ initial begin
 	loader_rom = 0;
 	loader_pc = 0;
 	loader_inst = 0;
-	repeat(2) @(posedge clk); rstn = 1;
 	load_ram;
-	repeat(2) @(posedge clk); rstn = 0;
-	repeat(2) @(posedge clk); rstn = 1;
 	load_rom;
-	repeat(2) @(posedge clk); rstn = 0;
-	repeat(3) begin
-		$write("load inst\n");
-		repeat(2) @(posedge clk); rstn = 1;
-		repeat(2) @(posedge clk); setn = 1;
-		do begin
-			print_cpu_state;
-			@(posedge clk);
-		end while(!idle);
-		repeat(2) @(posedge clk); rstn = 0;
-		repeat(2) @(posedge clk); setn = 0;
-	end
+	repeat(1) load_inst;
 	$fclose(in_fp);
 	$fclose(out_fp);
 	$finish;
