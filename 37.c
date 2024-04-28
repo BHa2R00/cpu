@@ -251,33 +251,24 @@ void encode(FILE* debug_fp, FILE* in_fp, FILE* out_fp){
 					line1 = line_cdr(".", line); if(line1 != NULL) line1++;
 					if(line0 != NULL){
 						while(line0[0] == ' ' || line0[0] == '	') line0++;
-						if(line_cdr("w", line0) != NULL){
-							inst = inst | (0x1<<15);
-						}
-						else if(line_cdr("dst", line0) != NULL){
+						if(line_cdr("dst ", line0) != NULL){
 							char* b = new_string(strlen(line0));
 							b = line_cdr(" ", line0);
-							if(line_cdr("a", b) != NULL) inst = inst | (0x1<<13);
-							if(line_cdr("d", b) != NULL) inst = inst | (0x1<<12);
+							if(line_cdr("d", b) != NULL) inst = inst | (0x1<<13);
+							if(line_cdr("a", b) != NULL) inst = inst | (0x1<<14);
+							if(line_cdr("w", b) != NULL) inst = inst | (0x1<<7);
 							free(b);
 						}
-						else if(line_cdr("src_x", line0) != NULL){
+						else if(line_cdr("src ", line0) != NULL){
 							char* b = new_string(strlen(line0));
 							b = line_cdr(" ", line0);
-							if(line_cdr("d", b) != NULL) inst = inst | (0x3<<8);
+							if(line_cdr("m", b) != NULL) inst = inst | (0x3<<8);
 							else if(line_cdr("a", b) != NULL) inst = inst | (0x1<<8);
 							else if(line_cdr("p", b) != NULL) inst = inst | (0x2<<8);
 							else if(line_cdr("z", b) != NULL) inst = inst | (0x0<<8);
 							free(b);
 						}
-						else if(line_cdr("src_y", line0) != NULL){
-							char* b = new_string(strlen(line0));
-							b = line_cdr(" ", line0);
-							if(line_cdr("m", b) != NULL) inst = inst | (0x1<<10);
-							else if(line_cdr("inst", b) != NULL) inst = inst | (0x0<<10);
-							free(b);
-						}
-						else if(line_cdr("byte", line0) != NULL){
+						else if(line_cdr("byte ", line0) != NULL){
 							inst = inst & 0xff00;
 							char* b = new_string(strlen(line0));
 							b = line_cdr(" ", line0);
@@ -286,7 +277,7 @@ void encode(FILE* debug_fp, FILE* in_fp, FILE* out_fp){
 							inst = inst | (0x00ff & inst_num);
 							free(b);
 						}
-						else if(line_cdr("begin", line0) != NULL){
+						else if(line_cdr("begin ", line0) != NULL){
 							inst = inst & 0xff00;
 							char* b = new_string(strlen(line0));
 							b = line_cdr(" ", line0);
@@ -295,35 +286,37 @@ void encode(FILE* debug_fp, FILE* in_fp, FILE* out_fp){
 							inst = inst | (0x00ff & inst_num);
 							free(b);
 						}
-						else if(line_cdr("inst", line0) != NULL){
+						else if(line_cdr("inum ", line0) != NULL){
 							inst = inst & 0xff00;
 							char* b = new_string(strlen(line0));
 							b = line_cdr(" ", line0);
 							while(b[0] == ' ' || b[0] == '	') b++;
-							sscanf(b, "%d.", &inst_num);
+							if(b[0] == '\'') sscanf(b, "'%c'.", &inst_num);
+							else if(strstr(b, "0x") != NULL) sscanf(b, "0x%02x.", &inst_num);
+							else sscanf(b, "%d.", &inst_num);
 							inst = inst | (0x00ff & inst_num);
+							inst = inst & 0x3fff;
 							free(b);
 						}
-						else if(line_cdr("alu", line0) != NULL){
+						else if(line_cdr("alu ", line0) != NULL){
 							char* b = new_string(strlen(line0));
 							b = line_cdr(" ", line0);
-							if(line_cdr("rbo_z", b) != NULL) inst = inst | (0x1<<7);
-							if(line_cdr("shl_z", b) != NULL) inst = inst | (0x1<<6);
-							if(line_cdr("inv_z", b) != NULL) inst = inst | (0x1<<5);
+							if(line_cdr("inv_z", b) != NULL) inst = inst | (0x1<<6);
+							if(line_cdr("rbo_z", b) != NULL) inst = inst | (0x1<<5);
 							if(line_cdr("add", b) != NULL) inst = inst | (0x1<<4);
 							if(line_cdr("inv_x", b) != NULL) inst = inst | (0x1<<3);
 							if(line_cdr("inv_y", b) != NULL) inst = inst | (0x1<<2);
 							if(line_cdr("zero_x", b) != NULL) inst = inst | (0x1<<1);
 							if(line_cdr("zero_y", b) != NULL) inst = inst | (0x1<<0);
+							inst = inst | (0x1<<15);
 							free(b);
 						}
-						else if(line_cdr("jmp", line0) != NULL){
+						else if(line_cdr("jmp ", line0) != NULL){
 							char* b = new_string(strlen(line0));
 							b = line_cdr(" ", line0);
-							inst = inst | (0x1<<11);
-							if(line_cdr("eq", b) != NULL) inst = inst | (0x1<<12);
-							if(line_cdr("lt", b) != NULL) inst = inst | (0x1<<13);
-							if(line_cdr("gt", b) != NULL) inst = inst | (0x1<<14);
+							if(line_cdr("eq", b) != NULL) inst = inst | (0x1<<10);
+							if(line_cdr("lt", b) != NULL) inst = inst | (0x1<<11);
+							if(line_cdr("gt", b) != NULL) inst = inst | (0x1<<12);
 							free(b);
 						}
 					}
