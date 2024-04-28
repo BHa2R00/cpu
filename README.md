@@ -5,6 +5,6 @@ single cycle cpu
 
 ![format](https://github.com/BHa2R00/cpu/blob/main/20240426234546_973x364_scrot.png)
 
-![format](https://github.com/BHa2R00/cpu/blob/main/20240427155354_407x690_scrot.png)
+![format](https://github.com/BHa2R00/cpu/blob/main/20240429011347_419x691_scrot.png)
 
-![format](https://github.com/BHa2R00/cpu/blob/main/20240427155702_1355x757_scrot.png)
+![format](https://github.com/BHa2R00/cpu/blob/main/20240429011631_1353x602_scrot.png)
