@@ -106,7 +106,7 @@ assign write = inum ? 1'b0 : inst[7];
 wire jeq = inst[10];
 wire jlt = inst[11];
 wire jgt = inst[12];
-wire jmp = |{jlt&&lt,jgt&&gt,jeq&&eq};
+wire jmp = (jlt && lt) || (jgt && gt) || (jeq && eq);
 
 wire dst_wdata = inst[13];
 wire dst_addr = inst[14];
@@ -128,7 +128,9 @@ assign idle = (inst == {(IMSB+1){1'b0}}) || (pc == {(PMSB+1){1'b1}});
 
 always@(negedge rstn or posedge clk) begin
 	if(!rstn) z <= {(DMSB+1){1'b0}};
-	else if(setn && ~idle) z <= nxt_z;
+	else if(setn && ~idle) begin
+		if(~inum) z <= nxt_z;
+	end
 end
 
 always@(negedge rstn or posedge clk) begin
@@ -149,7 +151,7 @@ always@(negedge rstn or posedge clk) begin
 	if(!rstn) pc <= {(PMSB+1){1'b0}};
 	else if(!setn) pc <= {(PMSB+1){1'b0}};
 	else if(setn && ~idle) begin
-		if(jmp) pc <= z;
+		if(jmp) pc <= addr;
 		else pc <= pc + 1;
 	end
 end
@@ -189,8 +191,8 @@ wire write;
 wire [DMSB:0] wdata;
 wire [AMSB:0] addr;
 wire [PMSB:0] pc;
-wire [DMSB:0] rdata = ram[addr];
-wire [IMSB:0] inst = rom[pc];
+reg [DMSB:0] rdata;
+reg [IMSB:0] inst;
 wire idle;
 
 cpu #(
@@ -211,15 +213,22 @@ cpu #(
 
 always@(negedge rstn or posedge clk) begin
 	if(!rstn) begin
+		rdata = 0;
+		inst = 0;
 	end
-	else if(loader_ram) begin
-		ram[loader_addr] <= loader_wdata;
-	end
-	else if(loader_rom) begin
-		rom[loader_pc] <= loader_inst;
-	end
-	else if(setn) begin
-		if(write) ram[addr] <= wdata;
+	else begin
+		#0.1;
+		rdata = ram[addr];
+		inst = rom[pc];
+		if(loader_ram) begin
+			ram[loader_addr] = loader_wdata;
+		end
+		else if(loader_rom) begin
+			rom[loader_pc] = loader_inst;
+		end
+		else if(setn) begin
+			if(write) ram[addr] = wdata;
+		end
 	end
 end
 
@@ -295,11 +304,11 @@ task print_cpu_state;
 	$write("%s\n", line);
 endtask
 
-reg [PMSB:0] cur_pc;
-wire xor_pc = setn ? (pc ^ cur_pc) : (loader_pc ^ cur_pc);
-always@(posedge xor_pc or posedge rstn) begin
+reg [IMSB:0] cur_inst;
+wire xor_inst = setn ? (inst != cur_inst) : (loader_inst != cur_inst);
+always@(posedge xor_inst or posedge rstn) begin
 	debug_line(setn ? pc : loader_pc);
-	#0.1 cur_pc = setn ? pc : loader_pc;
+	#0.1 cur_inst = setn ? inst : loader_inst;
 end
 
 task load_inst;
@@ -327,7 +336,6 @@ initial begin
 	out_fp = $fopen(out_file,"rb");
 	rstn = 0;
 	setn = 0;
-	cur_pc = 0;
 	loader_ram = 0;
 	loader_addr = 0;
 	loader_wdata = 0;
