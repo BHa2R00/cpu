@@ -7,6 +7,6 @@ single cycle cpu
 
 ![format](https://github.com/BHa2R00/cpu/blob/main/20240430210202_409x667_scrot.png)
 
-![format](https://github.com/BHa2R00/cpu/blob/main/20240430141748_895x807_scrot.png)
+![format](https://github.com/BHa2R00/cpu/blob/main/20240430210515_894x630_scrot.png)
 
 ![format](https://github.com/BHa2R00/cpu/blob/main/20240430141412_1333x476_scrot.png)
