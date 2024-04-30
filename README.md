@@ -9,4 +9,4 @@ single cycle cpu
 
 ![format](https://github.com/BHa2R00/cpu/blob/main/20240430210515_894x630_scrot.png)
 
-![format](https://github.com/BHa2R00/cpu/blob/main/20240430141412_1333x476_scrot.png)
+![format](https://github.com/BHa2R00/cpu/blob/main/20240430210824_1333x450_scrot.png)
