@@ -79,7 +79,7 @@ module cpu #(
 )(
 	output idle, 
 	input signed [DMSB:0] rdata, 
-	output write, 
+	output reg write, 
 	output reg signed [DMSB:0] wdata, 
 	output reg [AMSB:0] addr, 
 	input [IMSB:0] inst, 
@@ -101,7 +101,7 @@ assign x =
 	(src == 2'b10) ? pc[DMSB:0] : 
 	z;
 assign y = inum ? inst[DMSB:0] : wdata[DMSB:0];
-assign write = inum ? 1'b0 : inst[7];
+wire nxt_write = inum ? 1'b0 : inst[7];
 
 wire jeq = inst[10];
 wire jlt = inst[11];
@@ -134,9 +134,13 @@ always@(negedge rstn or posedge clk) begin
 end
 
 always@(negedge rstn or posedge clk) begin
-	if(!rstn) wdata <= {(DMSB+1){1'b0}};
+	if(!rstn) begin
+		wdata <= {(DMSB+1){1'b0}};
+		write <= 1'b0;
+	end
 	else if(setn && ~idle) begin
 		if(dst_wdata) wdata <= nxt_z;
+		write <= nxt_write;
 	end
 end
 
@@ -217,18 +221,24 @@ always@(negedge rstn or posedge clk) begin
 		inst = 0;
 	end
 	else begin
-		#0.1;
-		rdata = ram[addr];
-		inst = rom[pc];
-		if(loader_ram) begin
-			ram[loader_addr] = loader_wdata;
+		fork
+		begin
+			#0.1;
+			rdata = ram[addr];
+			inst = rom[pc];
 		end
-		else if(loader_rom) begin
-			rom[loader_pc] = loader_inst;
+		begin
+			if(loader_ram) begin
+				ram[loader_addr] = loader_wdata;
+			end
+			else if(loader_rom) begin
+				rom[loader_pc] = loader_inst;
+			end
+			else if(setn) begin
+				if(write) ram[addr] = wdata;
+			end
 		end
-		else if(setn) begin
-			if(write) ram[addr] = wdata;
-		end
+		join
 	end
 end
 
@@ -296,9 +306,9 @@ task load_rom;
 endtask
 
 task print_cpu_state;
-	$write("rdata = 0x%02x:%d:'%c', ", rdata, rdata, rdata);
-	$write("wdata = 0x%02x:%d:'%c', ", wdata, wdata, wdata);
-	$write("addr = 0x%02x:%d:'%c', ", addr, addr, addr);
+	$write("rdata = 0x%02x, ", rdata);
+	$write("wdata = 0x%02x, ", wdata);
+	$write("addr = 0x%02x, ", addr);
 	$write("pc = 0x%02x, ", pc);
 	$write("inst = %016b, %04x, ", inst, inst);
 	$write("%s\n", line);
