@@ -141,7 +141,21 @@ void mark(FILE* debug_fp, FILE* in_fp){
 				begin_len++;
 			}
 			else if(line_cdr(".end", line) != NULL){ line_st--; }
-			else if(line_st <= -2){ ; }
+			else if(line_st <= -2){
+				char* line0 = new_string(strlen(line));
+				char* line1 = new_string(strlen(line));
+				do{
+					line0 = line_car(",", line);
+					line1 = line_cdr(",", line); if(line1 != NULL) line1++;
+					if(line0 != NULL){
+						while(line0[0] == ' ' || line0[0] == '	') line0++;
+						addr++;
+					}
+					line = line_cdr(",", line); if(line != NULL) line++;
+				}while((line0 != NULL) && (line1 != NULL));
+				free(line0);
+				free(line1);
+			}
 			else if(line_st >= 2){
 				char* line0 = new_string(strlen(line));
 				char* line1 = new_string(strlen(line));
@@ -242,10 +256,13 @@ void encode(FILE* debug_fp, FILE* in_fp, FILE* out_fp){
 				free(line1);
 			}
 			else if(line_st >= 2){
+				//printf("macro: %s -> ", line);
 				line = line_expand_macro(line);
+				//printf("%s \n", line);
 				char* line0 = new_string(strlen(line));
 				char* line1 = new_string(strlen(line));
 				inst = 0;
+				inst = inst | (0x1<<15);
 				do{
 					line0 = line_car(".", line);
 					line1 = line_cdr(".", line); if(line1 != NULL) line1++;
@@ -257,6 +274,7 @@ void encode(FILE* debug_fp, FILE* in_fp, FILE* out_fp){
 							if(line_cdr("d", b) != NULL) inst = inst | (0x1<<13);
 							if(line_cdr("a", b) != NULL) inst = inst | (0x1<<14);
 							if(line_cdr("w", b) != NULL) inst = inst | (0x1<<7);
+							//printf("dst: %x\n", inst);
 							free(b);
 						}
 						else if(line_cdr("src ", line0) != NULL){
@@ -275,6 +293,7 @@ void encode(FILE* debug_fp, FILE* in_fp, FILE* out_fp){
 							while(b[0] == ' ' || b[0] == '	') b++;
 							inst_num = get_byte_addr(b);
 							inst = inst | (0x00ff & inst_num);
+							inst = inst & 0x3fff;
 							free(b);
 						}
 						else if(line_cdr("begin ", line0) != NULL){
@@ -284,6 +303,7 @@ void encode(FILE* debug_fp, FILE* in_fp, FILE* out_fp){
 							while(b[0] == ' ' || b[0] == '	') b++;
 							inst_num = get_begin_pc(b);
 							inst = inst | (0x00ff & inst_num);
+							inst = inst & 0x3fff;
 							free(b);
 						}
 						else if(line_cdr("inum ", line0) != NULL){
@@ -308,7 +328,7 @@ void encode(FILE* debug_fp, FILE* in_fp, FILE* out_fp){
 							if(line_cdr("inv_y", b) != NULL) inst = inst | (0x1<<2);
 							if(line_cdr("zero_x", b) != NULL) inst = inst | (0x1<<1);
 							if(line_cdr("zero_y", b) != NULL) inst = inst | (0x1<<0);
-							inst = inst | (0x1<<15);
+							//printf("alu: %x\n", inst);
 							free(b);
 						}
 						else if(line_cdr("jmp ", line0) != NULL){
@@ -317,6 +337,7 @@ void encode(FILE* debug_fp, FILE* in_fp, FILE* out_fp){
 							if(line_cdr("eq", b) != NULL) inst = inst | (0x1<<10);
 							if(line_cdr("lt", b) != NULL) inst = inst | (0x1<<11);
 							if(line_cdr("gt", b) != NULL) inst = inst | (0x1<<12);
+							//printf("jmp: %x\n", inst);
 							free(b);
 						}
 					}
