@@ -78,9 +78,10 @@ module cpu #(
 	parameter DMSB = 7 
 )(
 	output idle, 
+	output reg write, read, 
 	input signed [DMSB:0] rdata, 
-	output reg write, 
 	output reg signed [DMSB:0] wdata, 
+	output sel, 
 	output reg [AMSB:0] addr, 
 	input [IMSB:0] inst, 
 	output reg [PMSB:0] pc, 
@@ -95,8 +96,9 @@ wire lt = nxt_z[DMSB];
 wire gt = ~|{eq,lt};
 
 wire [1:0] src = inst[9:8];
+wire nxt_read = src == 2'b11;
 assign x = 
-	(src == 2'b11) ? rdata[DMSB:0] : 
+	nxt_read ? rdata[DMSB:0] : 
 	(src == 2'b01) ? addr[DMSB:0] : 
 	(src == 2'b10) ? pc[DMSB:0] : 
 	z;
@@ -106,10 +108,10 @@ wire nxt_write = inum ? 1'b0 : inst[7];
 wire jeq = inst[10];
 wire jlt = inst[11];
 wire jgt = inst[12];
-wire jmp = (jlt && lt) || (jgt && gt) || (jeq && eq);
+wire jmp = |{jlt&&lt,jgt&&gt,jeq&&eq};
 
 wire dst_wdata = inst[13];
-wire dst_addr = inst[14];
+assign sel = inst[14];
 
 alu #(
 	. MSB (DMSB)
@@ -137,17 +139,19 @@ always@(negedge rstn or posedge clk) begin
 	if(!rstn) begin
 		wdata <= {(DMSB+1){1'b0}};
 		write <= 1'b0;
+		read <= 1'b0;
 	end
 	else if(setn && ~idle) begin
 		if(dst_wdata) wdata <= nxt_z;
 		write <= nxt_write;
+		read <= nxt_read;
 	end
 end
 
 always@(negedge rstn or posedge clk) begin
 	if(!rstn) addr <= {(AMSB+1){1'b0}};
 	else if(setn && ~idle) begin
-		if(dst_addr) addr <= nxt_z;
+		if(sel) addr <= nxt_z;
 	end
 end
 
@@ -191,7 +195,7 @@ reg [DMSB:0] loader_wdata;
 reg [PMSB:0] loader_pc;
 reg [IMSB:0] loader_inst;
 
-wire write;
+wire write, sel, read;
 wire [DMSB:0] wdata;
 wire [AMSB:0] addr;
 wire [PMSB:0] pc;
@@ -206,10 +210,9 @@ cpu #(
 	.DMSB ( DMSB )
 ) u_cpu(
 	.idle(idle), 
-	.rdata(rdata), 
-	.write(write), 
-	.wdata(wdata), 
-	.addr(addr), 
+	.read(read), .rdata(rdata), 
+	.write(write), .wdata(wdata), 
+	.sel(sel), .addr(addr), 
 	.inst(inst), 
 	.pc(pc), 
 	.rstn(rstn), .setn(setn), .clk(clk) 
@@ -224,19 +227,17 @@ always@(negedge rstn or posedge clk) begin
 		fork
 		begin
 			#0.1;
-			rdata = ram[addr];
+			fork
+			if(sel) rdata = ram[addr];
 			inst = rom[pc];
+			join
 		end
 		begin
-			if(loader_ram) begin
-				ram[loader_addr] = loader_wdata;
-			end
-			else if(loader_rom) begin
-				rom[loader_pc] = loader_inst;
-			end
-			else if(setn) begin
-				if(write) ram[addr] = wdata;
-			end
+			fork
+			if(loader_ram) ram[loader_addr] = loader_wdata;
+			if(loader_rom) rom[loader_pc] = loader_inst;
+			if(sel && write) ram[addr] = wdata;
+			join
 		end
 		join
 	end
