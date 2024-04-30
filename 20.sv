@@ -168,6 +168,164 @@ endmodule
 
 
 
+/*
+
+# SAED_Lib/32-28nm_EDK 
+
+# dc_shell 
+analyze -format verilog ../rtl/20.sv
+elaborate -update cpu
+create_clock -period 50 [get_ports clk]
+compile_ultra -scan
+set_dft_configuration -fix_clock enable
+create_port -direction "in" test_si
+set_dft_signal -port test_si -type scandatain
+create_port -direction "out" test_so
+set_dft_signal -port test_so -type scandataout
+#create_port -direction "in" test_se
+set_dft_signal -view spec -port test_se -type scanenable
+set_dft_signal -view spec -port clk -type testdata
+create_test_protocol -infer_clock -infer_asynch 
+preview_dft
+dft_drc
+insert_dft
+write -format verilog -hierarchy -output ../dc/cpu_mapped.v
+write_test_protocol -output ../dc/cpu_mapped.spf
+write_sdc ../dc/cpu_mapped.sdc
+report_timing
+report_area
+
+# tmax -shell 
+read_netlist ../dc/cpu_mapped.v 
+read_netlist ../lib/saed32nm_hvt.v -library 
+run_build_model cpu
+run_drc ../dc/cpu_mapped.spf
+set_faults -model stuck
+add_faults -all
+set_atpg -merge high -verbose -abort_limit 256 -coverage 100 -decision random
+run_atpg
+set_faults -summary verbose
+set_faults -report collapsed
+report_summaries
+write_faults cpu_faults.rpt -all -replace
+write_patterns ../atpg/cpu_patterns.stil -format stil -replace
+
+# icc_shell
+set top_entry cpu
+sh rm -rfv ../icc/${top_entry}.mw
+create_mw_lib -technology $tf -mw_reference_library $ref_lib ../icc/${top_entry}.mw
+open_mw_lib ../icc/${top_entry}.mw
+read_verilog -top ${top_entry} ../dc/${top_entry}_mapped.v
+uniquify_fp_mw_cel
+current_design ${top_entry}
+link
+set_operating_conditions \
+	-min_library saed32hvt_ss0p7vn40c -min ss0p7vn40c \
+	-max_library saed32hvt_ff1p16v125c -max ff1p16v125c 
+read_sdc ../icc/${top_entry}_mapped.sdc
+create_clock -period 50 [get_ports clk]
+set_tlu_plus_files \
+-max_tluplus $max_tluplus \
+-min_tluplus $min_tluplus \
+-tech2itf_map $tech2itf_map
+check_tlu_plus_files
+create_floorplan \
+	-control_type "aspect_ratio" \
+	-core_aspect_ratio 1.0 \
+	-core_utilization 0.8 \
+	-row_core_ratio 1 \
+	-start_first_row \
+	-flip_first_row \
+	-left_io2core 0.1 \
+	-bottom_io2core 0.1 \
+	-right_io2core 0.1 \
+	-top_io2core 0.1
+derive_pg_connection \
+	-power_net VDD -power_pin VDD \
+	-ground_net VSS -ground_pin VSS
+derive_pg_connection \
+	-power_net VDD -power_pin VDD \
+	-ground_net VSS -ground_pin VSS
+set_separate_process_options -placement false
+place_opt -effort high -congestion -area_recovery
+create_fp_placement -congestion_driven -effort high -timing_driven
+preroute_standard_cells \
+	-nets {VDD VSS} \
+	-connet horizontal \
+	-do_not_route_over_macros \
+	-remove_floating_pieces
+derive_pg_connection \
+	-power_net VDD -power_pin VDD 
+	-ground_net VSS -ground_pin VSS
+derive_pg_connection \
+	-power_net VDD -ground_net VSS -tie 
+verify_pg_nets
+derive_pg_connection \
+	-power_net DVDD -power_pin DVDD \
+	-ground_net DVSS -ground_pin DVSS
+derive_pg_connection \
+	-power_net DVDD -ground_net DVSS -tie
+connect_tie_cells \
+	-objects [get_cells -hierarchical *] \
+	-obj_type cell_inst \
+	-tie_high_lib_cell TIEH_HVT -tie_low_lib_cell TIEL_HVT \
+	-max_fanout 5
+legalize_placement -incremental
+verify_pg_nets
+set_route
+source $antenna
+route_opt -effort high -area_recovery -optimize_wire_via
+insert_stdcell_filler \
+	-cell_with_metal $fillers \
+	-cell_without_metal $fillers \
+	-randomize \
+	-dont_respect_hard_placement_blockage \
+	-dont_respect_soft_placement_blockage \
+	-connect_to_power {VDD} \
+	-connect_to_ground {VSS}
+derive_pg_connection \
+	-power_net VDD -power_pin VDD \
+	-ground_net VSS -ground_pin VSS
+verify_pg_nets
+verify_route
+verify_zrt_route
+verify_lvs -max_error 1000
+route_zrt_detail -incremental true -initial_drc_from_input true
+verify_lvs -check_short_locator -check_open_locator
+change_names -rules verilog -hierarchy
+define_name_rules MI -case_insensitive 
+change_names -rules MI -hierarchy -verbose
+define_name_rules NET_PORT -equal_ports_nets 
+change_names -rules NET_PORT -hierarchy -verbose
+write_verilog \
+	-no_corner_pad_cells \
+	-no_pad_filler_cells -no_core_filler_cells \
+	-force_no_output_references \
+	-verilog_file ../icc/${top_entry}_routed.v
+set write_sdc_output_lumped_net_capacitance false
+set write_sdc_output_net_resistance false
+extract_rc -coupling_cap
+update_timing
+write_parasitics -output ../icc/${top_entry}_routed.spef
+write_sdf ../icc/${top_entry}_routed.sdf
+write_sdc ../icc/${top_entry}_routed.sdc
+set_write_stream_options \
+	-child_depth 255 \
+	-map_layer $ref_map \
+	-keep_data_type \
+	-max_name_length 255 \
+	-output_net_name_as_property 1 \
+	-output_instance_name_as_property 1 \
+	-output_pin {geometry text}
+write_stream -cells ${top_entry} -format gds ../icc/${top_entry}.gds
+
+
+ */
+
+
+
+
+
 `timescale 1ns/1ps
 
 module cpu_tb_1;
