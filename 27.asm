@@ -13,36 +13,40 @@ a.byte
 1,
 .endbyte
 b.byte
-1,
+0,
 .endbyte
 .enddata
 .text
-* fibonacci 
+fibonacci.begin
 for_load.begin
-	inum 9. dst d.
+	inum 8. dst d.
 	byte k. dst a.
 	dst w.
 	begin for_loop. dst a.
-	jmp eq, lt, gt.
 .end
 for_loop.begin
+* b = a; a = c;
+shift.begin
+	byte a. dst a.
+	src m. macro alu_x.. dst d.
+	byte b. dst a.
+	macro alu_y.. dst d, w.
+	byte c. dst a.
+	src m. macro alu_x.. dst d.
+	byte a. dst a.
+	macro alu_y.. dst d, w.
+.end
 * c = a + b;
+add.begin
 	byte a. dst a.
 	src m. macro alu_x.. dst d.
 	byte b. dst a.
 	src m. macro alu_+.. dst d.
 	byte c. dst a.
 	macro alu_y.. dst d, w.
-* b = a; a = c;
-	byte a. dst a.
-	src m. macro alu_x.. dst d.
-	byte b. dst a.
-	macro alu_y.. dst d, w.
-	byte c. dst a.
-	src m. macro alu_x.. dst d.
-	byte a. dst a.
-	macro alu_y.. dst d, w.
+.end
 * k--; 
+count.begin
 	byte k. dst a.
 	src m. macro alu_x.. dst d.
 	begin for_done. dst a.
@@ -52,8 +56,10 @@ for_loop.begin
 	begin for_loop. dst a.
 	jmp eq, lt, gt. 
 .end
+.end
 for_done.begin
 	byte c. dst a.
 	src m. macro alu_x.. dst d.
+.end
 .end
 .endtext
