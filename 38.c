@@ -109,7 +109,7 @@ unsigned char get_begin_pc(char* name){
 unsigned char ram[(1<<(AMSB+1))];
 unsigned short rom[(1<<(PMSB+1))];
 
-void mark(FILE* debug_fp, FILE* in_fp){
+void mark0(FILE* debug_fp, FILE* in_fp){
 	unsigned int pc = 0;
 	unsigned int addr = 0;
 	char data = 0;
@@ -119,9 +119,11 @@ void mark(FILE* debug_fp, FILE* in_fp){
 		fgets(line, (1<<(DMSB+1))+1, in_fp);
 		line[strlen(line)-1] = '\0';
 		while(line[0] == ' ' || line[0] == '	') line++;
+		//printf("mark0: %s\n", line);
 		if(line[0] == '*'){ ; }
 		else if((line[0] == '.') || (line[0] >= 33 && line[0] <= 126)){
 			if(line_cdr(".macro", line) != NULL){ 
+				//printf("mark0 .macro: %s\n", line);
 				macro[macro_len] = new_string(strlen(line));
 				strcpy(macro[macro_len], line_car(".", line));
 				macro_body[macro_len] = new_string(strlen(line));
@@ -129,11 +131,13 @@ void mark(FILE* debug_fp, FILE* in_fp){
 				macro_len++;
 			}
 			else if(line_cdr(".data", line) != NULL){ 
+				//printf("mark0 .data: %s\n", line);
 				line_st--; 
 				for(int k = 0; k < (1<<(AMSB+1)); k++) ram[k] = 0;
 			}
 			else if(line_cdr(".enddata", line) != NULL){ line_st++; }
 			else if(line_cdr(".byte", line) != NULL){ 
+				//printf("mark0 .byte: %s\n", line);
 				line_st--; 
 				byte[byte_len] = new_string(strlen(line));
 				byte[byte_len] = line_car(".", line);
@@ -142,11 +146,13 @@ void mark(FILE* debug_fp, FILE* in_fp){
 			}
 			else if(line_cdr(".endbyte", line) != NULL){ line_st++; }
 			else if(line_cdr(".text", line) != NULL){ 
+				//printf("mark0 .text: %s\n", line);
 				line_st++; 
 				for(int k = 0; k < (1<<(PMSB+1)); k++) rom[k] = 0;
 			}
 			else if(line_cdr(".endtext", line) != NULL){ line_st--; }
 			else if(line_cdr(".begin", line) != NULL){ 
+				//printf("mark0 .begin: %s\n", line);
 				line_st++; 
 				begin[begin_len] = new_string(strlen(line));
 				begin[begin_len] = line_car(".", line);
@@ -194,7 +200,7 @@ void write_debug_line(FILE* debug_fp, unsigned int pc, char* line){
 	fprintf(debug_fp, "%s", line);
 }
 
-void encode(FILE* debug_fp, FILE* in_fp, FILE* out_fp){
+void encode0(FILE* debug_fp, FILE* in_fp, FILE* out_fp){
 	unsigned int pc = 0;
 	unsigned int addr = 0;
 	char data = 0;
@@ -206,6 +212,7 @@ void encode(FILE* debug_fp, FILE* in_fp, FILE* out_fp){
 		fgets(line, (1<<(DMSB+1))+1, in_fp);
 		line[strlen(line)-1] = '\0';
 		while(line[0] == ' ' || line[0] == '	') line++;
+		//printf("encode0: %s\n", line);
 		if(line[0] == '*'){
 			write_debug_line(debug_fp, pc, line);
 		}
@@ -372,7 +379,7 @@ void encode(FILE* debug_fp, FILE* in_fp, FILE* out_fp){
 	fwrite(&rom, sizeof(unsigned short), (1<<(PMSB+1)), out_fp);
 }
 
-void assembler(char* debug_file, char* in_file, char* out_file){
+void asm0(char* debug_file, char* in_file, char* out_file){
 	FILE* in_fp;
 	FILE* out_fp;
 	FILE* debug_fp;
@@ -380,10 +387,10 @@ void assembler(char* debug_file, char* in_file, char* out_file){
 	in_fp = fopen(in_file, "r"); 
 	fprintf(debug_fp, "%s\n", in_file);
 	fprintf(debug_fp, "%s\n", out_file);
-	mark(debug_fp, in_fp); 
+	mark0(debug_fp, in_fp); 
 	fclose(in_fp);
 	in_fp = fopen(in_file, "r"); out_fp = fopen(out_file, "wb");
-	encode(debug_fp, in_fp, out_fp); 
+	encode0(debug_fp, in_fp, out_fp); 
 	fclose(out_fp); fclose(in_fp);
 	fclose(debug_fp);
 }
@@ -391,25 +398,25 @@ void assembler(char* debug_file, char* in_file, char* out_file){
 int main(int argc, char** argv){
 	int i;
 	char* out_file = "a.bin";
-	char* asm_file = "no input file";
+	char* asm0_file = "no input file";
 	char* debug_file = "a.debug";
 	for(i = 1; i < argc; i++){
 		if(strcmp(argv[i], "-o") == 0){
 			out_file = argv[i+1];
 		}
-		else if(strcmp(argv[i], "-asm") == 0){
-			asm_file = argv[i+1];
+		else if(strcmp(argv[i], "-asm0") == 0){
+			asm0_file = argv[i+1];
 		}
 		else if(strcmp(argv[i], "-d") == 0){
 			debug_file = argv[i+1];
 		}
 	}
-	if(strcmp(asm_file, "no input file") != 0){
-		assembler(debug_file, asm_file, out_file);
+	if(strcmp(asm0_file, "no input file") != 0){
+		asm0(debug_file, asm0_file, out_file);
 	}
 	else {
 		printf("-o <output_bin>, a.bin by default\n");
-		printf("-asm <input_asm>\n");
+		printf("-asm0 <input_asm0>\n");
 		printf("-d <debug_db>, a.debug by default\n");
 	}
 	return 0;
