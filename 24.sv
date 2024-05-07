@@ -417,9 +417,9 @@ task load_rom;
 		@(posedge clk);
 		repeat(1<<(PMSB+1)) begin
 			$fscanf(out_fp, "%c", pdata);
-			loader_inst = 16'h00ff & pdata;
+			loader_inst = {(DMSB+1){1'b1}} & pdata;
 			$fscanf(out_fp, "%c", pdata);
-			loader_inst = loader_inst | ((16'h00ff & pdata) << 8);
+			loader_inst = loader_inst | (({(DMSB+1){1'b1}} & pdata) << (IMSB-DMSB));
 			@(posedge clk);
 			loader_pc = loader_pc + 1;
 		end
@@ -447,14 +447,14 @@ end
 task load_inst;
 	begin
 		$write("load inst\n");
-		repeat(2) @(negedge clk); rstn = 1;
-		repeat(2) @(negedge clk); setn = 1;
+		repeat(2) @(posedge clk); rstn = 1;
+		repeat(2) @(posedge clk); setn = 1;
 		do begin
 			print_cpu_state;
-			@(negedge clk);
+			@(posedge clk);
 		end while(!idle);
-		repeat(2) @(negedge clk); setn = 0;
-		repeat(2) @(negedge clk); rstn = 0;
+		repeat(2) @(posedge clk); setn = 0;
+		repeat(2) @(posedge clk); rstn = 0;
 	end
 endtask
 
@@ -481,6 +481,34 @@ initial begin
 	$fclose(in_fp);
 	$fclose(out_fp);
 	$finish;
+end
+
+endmodule
+
+
+
+
+module dsm (
+	output sdo, 
+	input signed [15:0] din, 
+	input rstn, setn, ock, uck 
+);
+
+reg [15:0] undersampled_din;
+reg [15:0] sigma;
+wire [15:0] delta = sdo ? 
+	((sigma == 16'hffff) ? 16'h8000 : 16'h0001) : 
+	((sigma == 16'h0000) ? 16'h8000 : 16'hffff);
+assign sdo = undersampled_din > sigma;
+
+always@(negedge rstn or posedge uck) begin
+	if(!rstn) undersampled_din <= 16'h8000;
+	else if(setn) undersampled_din <= 16'h8000 + din;
+end
+
+always@(negedge rstn or posedge ock) begin
+	if(!rstn) sigma <= 16'h8000;
+	else if(setn) sigma <= (sigma - undersampled_din) + delta;
 end
 
 endmodule
