@@ -31,6 +31,55 @@ assign z = z4;
 endmodule
 
 
+module filo #(
+	parameter DMSB = 7, 
+	parameter AMSB = 2
+)(
+	output full, empty, 
+	input push, pop, 
+	output reg [DMSB:0] q, 
+	input [DMSB:0] d, 
+	input rstn, setn, clk 
+);
+
+reg [AMSB:0] a;
+assign full = a == {(AMSB+1){1'b1}};
+assign empty = a == {(AMSB+1){1'b0}};
+reg [DMSB:0] r[0:((1<<(AMSB+1))-1)];
+wire [AMSB:0] pop_a = a - {{AMSB{1'b0}}, 1'b1};
+wire [AMSB:0] a0 = a ^ (a>>1);
+wire [AMSB:0] a1 = pop_a ^ (pop_a>>1);
+always@(negedge rstn or posedge clk) begin
+	if(!rstn) begin
+		a <= {(AMSB+1){1'b0}};
+		q <= {(DMSB+1){1'b0}};
+	end
+	else if(setn) begin
+		case({push, pop})
+			2'b11: q <= d;
+			2'b10: begin
+				if(!full) begin
+					r[a0] <= q;
+					a <= a + {{AMSB{1'b0}}, 1'b1};
+					q <= d;
+				end
+			end
+			2'b01: begin
+				if(!empty) begin
+					q <= r[a1];
+					a <= a - {{AMSB{1'b0}}, 1'b1};
+				end
+			end
+			default: begin
+				a <= a;
+				q <= q;
+			end
+		endcase
+	end
+end
+
+endmodule
+
 
 module cpu #(
 	parameter IMSB = 15, 
@@ -49,7 +98,7 @@ module cpu #(
 );
 
 wire inum = ~inst[IMSB];
-reg signed [DMSB:0] z;
+wire signed [DMSB:0] z;
 wire signed [DMSB:0] x, y, nxt_z;
 wire eq = ~|nxt_z;
 wire lt = nxt_z[DMSB];
@@ -57,10 +106,10 @@ wire gt = ~|{eq,lt};
 
 wire [1:0] src = inst[(IMSB-4):(IMSB-5)];
 assign x = 
-	(src == 2'b11) ? wdata[DMSB:0] : 
+	(src == 2'b11) ? z : 
 	(src == 2'b01) ? addr[DMSB:0] : 
 	(src == 2'b10) ? pc[DMSB:0] : 
-	z;
+	wdata[DMSB:0];
 assign y = inum ? inst[DMSB:0] : rdata[DMSB:0];
 wire nxt_sel = inst[IMSB-7];
 wire nxt_write = inst[IMSB-6];
@@ -68,7 +117,7 @@ wire nxt_write = inst[IMSB-6];
 wire jeq = inst[IMSB-3];
 wire jlt = inst[IMSB-2];
 wire jgt = inst[IMSB-1];
-wire jmp = |{jlt&&lt,jgt&&gt,jeq&&eq};
+wire jmp = |{(jlt && lt), (jgt && gt), (jeq && eq)};
 
 alu #(
 	. MSB (DMSB)
@@ -85,12 +134,19 @@ alu #(
 
 assign idle = (inst == {(IMSB+1){1'b0}}) || (pc == {(PMSB+1){1'b1}});
 
-always@(negedge rstn or posedge clk) begin
-	if(!rstn) z <= {(DMSB+1){1'b0}};
-	else if(setn && ~idle) begin
-		if(~|{nxt_sel, nxt_write, jmp}) z <= nxt_z;
-	end
-end
+wire push = ~|{nxt_sel, nxt_write, jmp};
+wire pop = src == 2'b11;
+
+filo #(
+	. DMSB (DMSB), 
+	. AMSB (3)
+) u_filo(
+	.full(), .empty(), 
+	.push(push), .pop(pop), 
+	.q(z), 
+	.d(nxt_z), 
+	.rstn(rstn), .setn(setn && ~idle), .clk(clk) 
+);
 
 always@(negedge rstn or posedge clk) begin
 	if(!rstn) begin
@@ -141,7 +197,7 @@ endmodule
 # dc_shell 
 analyze -format verilog ../rtl/24.sv
 elaborate -update cpu
-create_clock -period 50 [get_ports clk]
+create_clock -period 125 [get_ports clk]
 compile_ultra -scan
 set_dft_configuration -fix_clock enable
 create_port -direction "in" test_si
@@ -189,7 +245,7 @@ set_operating_conditions \
 	-min_library saed32hvt_ss0p7vn40c -min ss0p7vn40c \
 	-max_library saed32hvt_ff1p16v125c -max ff1p16v125c 
 read_sdc ../icc/${top_entry}_mapped.sdc
-create_clock -period 50 [get_ports clk]
+create_clock -period 125 [get_ports clk]
 set_tlu_plus_files \
 -max_tluplus $max_tluplus \
 -min_tluplus $min_tluplus \
@@ -484,7 +540,6 @@ initial begin
 end
 
 endmodule
-
 
 
 
