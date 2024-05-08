@@ -139,7 +139,7 @@ wire pop = src == 2'b11;
 
 filo #(
 	. DMSB (DMSB), 
-	. AMSB (3)
+	. AMSB (2)
 ) u_filo(
 	.full(), .empty(), 
 	.push(push), .pop(pop), 
@@ -346,6 +346,7 @@ write_stream -cells ${top_entry} -format gds ../icc/${top_entry}.gds
 
 
 
+/*
 `timescale 10ns/1ps
 
 module cpu_tb_1;
@@ -404,7 +405,6 @@ always@(negedge rstn or posedge clk) begin
 	else begin
 		fork
 		begin
-			//#0.1;
 			fork
 			if(sel) rdata = ram[addr];
 			inst = rom[pc];
@@ -485,11 +485,11 @@ task load_rom;
 endtask
 
 task print_cpu_state;
-	$write("rdata = 0x%02x, ", rdata);
-	$write("wdata = 0x%02x, ", wdata);
-	$write("addr = 0x%02x, ", addr);
-	$write("pc = 0x%02x, ", pc);
-	$write("inst = %016b, %04x, ", inst, inst);
+	$write("rdata = 0x%08x, ", rdata);
+	$write("wdata = 0x%08x, ", wdata);
+	$write("addr = 0x%08x, ", addr);
+	$write("pc = 0x%08x, ", pc);
+	$write("inst = %032b, %08x, ", inst, inst);
 	$write("%s\n", line);
 endtask
 
@@ -540,30 +540,230 @@ initial begin
 end
 
 endmodule
+*/
 
 
 
-module dsm (
-	output sdo, 
-	input signed [15:0] din, 
-	input rstn, setn, ock, uck 
+module ram #(
+	parameter	AMSB = 7, 
+	parameter	DMSB = 7
+)(
+	input [DMSB:0] wdata, 
+	output reg [DMSB:0] rdata, 
+	input [AMSB:0] addr, 
+	input write, 
+	input rstn, setn, clk 
 );
 
-reg [15:0] undersampled_din;
-reg [15:0] sigma;
-wire [15:0] delta = sdo ? 
-	((sigma == 16'hffff) ? 16'h8000 : 16'h0001) : 
-	((sigma == 16'h0000) ? 16'h8000 : 16'hffff);
-assign sdo = undersampled_din > sigma;
+`ifdef FPGA
+`else
+reg [7:0] ram[0:(1<<(AMSB+1))-1];
+always@(negedge rstn or posedge clk) begin
+	if(!rstn) rdata = 0;
+	else if(setn) begin
+		rdata = ram[addr];
+		if(write) ram[addr] = wdata;
+	end
+end
+`endif
 
-always@(negedge rstn or posedge uck) begin
-	if(!rstn) undersampled_din <= 16'h8000;
-	else if(setn) undersampled_din <= 16'h8000 + din;
+endmodule
+
+
+
+
+
+`timescale 10ns/1ps
+
+module cpu_tb_2;
+
+parameter IMSB = 15;
+parameter PMSB = 7;
+parameter AMSB = 7; 
+parameter DMSB = 7;
+
+reg rstn, setn, clk;
+
+initial clk = 0;
+always #1 clk = ~clk;
+
+reg [255:0] in_file;
+reg [255:0] out_file;
+integer debug_fp, in_fp, out_fp;
+
+reg [15:0] rom[0:(1<<(PMSB+1))-1];
+
+reg loader_ram, loader_rom;
+reg [AMSB:0] loader_addr;
+reg [DMSB:0] loader_wdata;
+reg [PMSB:0] loader_pc;
+reg [IMSB:0] loader_inst;
+
+wire write, sel;
+wire [DMSB:0] wdata;
+wire [AMSB:0] addr;
+wire [PMSB:0] pc;
+reg [DMSB:0] rdata;
+reg [IMSB:0] inst;
+wire idle;
+
+cpu #(
+	.IMSB ( IMSB ), 
+	.PMSB ( PMSB ), 
+	.AMSB ( AMSB ), 
+	.DMSB ( DMSB )
+) u_cpu(
+	.idle(idle), 
+	.write(write), .sel(sel), 
+	.rdata(rdata), .wdata(wdata), 
+	.addr(addr), 
+	.inst(inst), 
+	.pc(pc), 
+	.rstn(rstn), .setn(setn), .clk(clk) 
+);
+
+ram #(
+	.AMSB ( AMSB ), 
+	.DMSB ( DMSB )
+) u_ram(
+	.wdata(loader_ram ? loader_wdata : wdata), 
+	.rdata(rdata), 
+	.addr(loader_ram ? loader_addr : addr), 
+	.write(loader_ram ? 1'b1 : write), 
+	.rstn(rstn), .setn(loader_ram ? 1'b1 : sel), .clk(clk) 
+);
+
+always@(negedge rstn or posedge clk) begin
+	if(!rstn) inst = 0;
+	else begin
+		fork
+		begin
+			inst = rom[pc];
+		end
+		begin
+			if(loader_rom) rom[loader_pc] = loader_inst;
+		end
+		join
+	end
 end
 
-always@(negedge rstn or posedge ock) begin
-	if(!rstn) sigma <= 16'h8000;
-	else if(setn) sigma <= (sigma - undersampled_din) + delta;
+reg [511:0] line;
+initial line = 0;
+task debug_line(input bit [PMSB:0] in_pc);
+	reg [PMSB:0] debug_pc;
+	reg [511:0] debug_line;
+	reg [7:0] debug_line_len;
+	reg [7:0] debug_line_char;
+	begin
+		debug_fp = $fopen("a.debug","r");
+		$fscanf(debug_fp, "%s\n", in_file);
+		$fscanf(debug_fp, "%s\n", out_file);
+		while(!$feof(debug_fp)) begin
+			$fscanf(debug_fp, "%c", debug_pc);
+			$fscanf(debug_fp, "%c", debug_line_len);
+			debug_line = 512'd0;
+			repeat(debug_line_len) begin
+				$fscanf(debug_fp, "%c", debug_line_char);
+				debug_line = {debug_line[511-8:0],debug_line_char};
+			end
+			if(in_pc == debug_pc) line = debug_line;
+		end
+		$fclose(debug_fp);
+	end
+endtask
+
+task load_ram;
+	begin
+		repeat(2) @(negedge clk); rstn = 1;
+		loader_ram = 1;
+		loader_addr = 0;
+		$write("load ram\n");
+		@(posedge clk);
+		repeat(1<<(AMSB+1)) begin
+			$fscanf(out_fp, "%c", loader_wdata);
+			@(posedge clk);
+			loader_addr = loader_addr + 1;
+		end
+		loader_ram = 0;
+		repeat(2) @(negedge clk); rstn = 0;
+	end
+endtask
+
+task load_rom;
+	reg [7:0] pdata;
+	begin
+		repeat(2) @(negedge clk); rstn = 1;
+		loader_rom = 1;
+		loader_pc = 0;
+		$write("load rom\n");
+		@(posedge clk);
+		repeat(1<<(PMSB+1)) begin
+			$fscanf(out_fp, "%c", pdata);
+			loader_inst = {(DMSB+1){1'b1}} & pdata;
+			$fscanf(out_fp, "%c", pdata);
+			loader_inst = loader_inst | (({(DMSB+1){1'b1}} & pdata) << (IMSB-DMSB));
+			@(posedge clk);
+			loader_pc = loader_pc + 1;
+		end
+		loader_rom = 0;
+		repeat(2) @(negedge clk); rstn = 0;
+	end
+endtask
+
+task print_cpu_state;
+	$write("rdata = 0x%08x, ", rdata);
+	$write("wdata = 0x%08x, ", wdata);
+	$write("addr = 0x%08x, ", addr);
+	$write("pc = 0x%08x, ", pc);
+	$write("inst = %032b, %08x, ", inst, inst);
+	$write("%s\n", line);
+endtask
+
+reg [IMSB:0] cur_inst;
+wire xor_inst = setn ? (inst != cur_inst) : (loader_inst != cur_inst);
+always@(posedge xor_inst or posedge rstn) begin
+	debug_line(setn ? pc : loader_pc);
+	#0.1 cur_inst = setn ? inst : loader_inst;
+end
+
+task load_inst;
+	begin
+		$write("load inst\n");
+		repeat(2) @(posedge clk); rstn = 1;
+		repeat(2) @(posedge clk); setn = 1;
+		do begin
+			print_cpu_state;
+			@(posedge clk);
+		end while(!idle);
+		repeat(2) @(posedge clk); setn = 0;
+		repeat(2) @(posedge clk); rstn = 0;
+	end
+endtask
+
+initial begin
+	$dumpfile("a.fst");
+	$dumpvars(0, cpu_tb_2);
+	debug_fp = $fopen("a.debug","rb");
+	$fscanf(debug_fp, "%s\n", in_file);
+	$fscanf(debug_fp, "%s\n", out_file);
+	$fclose(debug_fp);
+	in_fp = $fopen(in_file,"r");
+	out_fp = $fopen(out_file,"rb");
+	rstn = 0;
+	setn = 0;
+	loader_ram = 0;
+	loader_addr = 0;
+	loader_wdata = 0;
+	loader_rom = 0;
+	loader_pc = 0;
+	loader_inst = 0;
+	load_ram;
+	load_rom;
+	repeat(1) load_inst;
+	$fclose(in_fp);
+	$fclose(out_fp);
+	$finish;
 end
 
 endmodule
+
