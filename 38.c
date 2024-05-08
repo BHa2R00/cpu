@@ -276,9 +276,9 @@ void encode0(FILE* debug_fp, FILE* in_fp, FILE* out_fp){
 				free(line1);
 			}
 			else if(line_st >= 2){
-				printf("macro: %s -> ", line);
+				//printf("macro: %s -> ", line);
 				line = line_expand_macro(line);
-				printf("%s \n", line);
+				//printf("%s \n", line);
 				char* line0 = new_string(strlen(line));
 				char* line1 = new_string(strlen(line));
 				inst = 0;
@@ -299,10 +299,10 @@ void encode0(FILE* debug_fp, FILE* in_fp, FILE* out_fp){
 						else if(line_cdr("src ", line0) != NULL){
 							char* b = new_string(strlen(line0));
 							b = line_cdr(" ", line0);
-							if(line_cdr("d", b) != NULL) inst = inst | (0x3<<(IMSB-5));
+							if(line_cdr("z", b) != NULL) inst = inst | (0x3<<(IMSB-5));
 							else if(line_cdr("a", b) != NULL) inst = inst | (0x1<<(IMSB-5));
 							else if(line_cdr("p", b) != NULL) inst = inst | (0x2<<(IMSB-5));
-							else if(line_cdr("z", b) != NULL) inst = inst | (0x0<<(IMSB-5));
+							else if(line_cdr("d", b) != NULL) inst = inst | (0x0<<(IMSB-5));
 							else inst = inst | (0x0<<(IMSB-5));
 							//printf("src: %s\n", bstr(inst));
 							free(b);
