@@ -254,7 +254,7 @@ check_tlu_plus_files
 create_floorplan \
 	-control_type "aspect_ratio" \
 	-core_aspect_ratio 1.0 \
-	-core_utilization 0.8 \
+	-core_utilization 0.5 \
 	-row_core_ratio 1 \
 	-start_first_row \
 	-flip_first_row \
@@ -674,7 +674,7 @@ endtask
 
 task load_ram;
 	begin
-		repeat(2) @(negedge clk); rstn = 1;
+		repeat(2) @(posedge clk); rstn = 1;
 		loader_ram = 1;
 		loader_addr = 0;
 		$write("load ram\n");
@@ -685,14 +685,14 @@ task load_ram;
 			loader_addr = loader_addr + 1;
 		end
 		loader_ram = 0;
-		repeat(2) @(negedge clk); rstn = 0;
+		repeat(2) @(posedge clk); rstn = 0;
 	end
 endtask
 
 task load_rom;
 	reg [7:0] pdata;
 	begin
-		repeat(2) @(negedge clk); rstn = 1;
+		repeat(2) @(posedge clk); rstn = 1;
 		loader_rom = 1;
 		loader_pc = 0;
 		$write("load rom\n");
@@ -706,7 +706,7 @@ task load_rom;
 			loader_pc = loader_pc + 1;
 		end
 		loader_rom = 0;
-		repeat(2) @(negedge clk); rstn = 0;
+		repeat(2) @(posedge clk); rstn = 0;
 	end
 endtask
 
