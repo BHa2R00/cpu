@@ -1,0 +1,62 @@
+alu_x.macro alu zero_y, inv_y
+alu_y.macro alu zero_x, inv_x
+alu_+.macro alu add
+alu_y-1.macro macro alu_+., zero_x, inv_x
+.data
+k.byte
+-10,
+.endbyte
+c.byte
+1,
+.endbyte
+a.byte
+1,
+.endbyte
+b.byte
+0,
+.endbyte
+.enddata
+.text
+* fibonacci
+for_load.begin
+	byte k. dst a.
+	inum 9. dst a, d.
+.end
+* b = a; a = c;
+shift.begin
+	byte a. dst a.
+	byte a. dst a.
+	macro alu_y..
+	byte c. dst a.
+	byte c. dst a.
+	macro alu_y..
+	byte a. dst a.
+	src z. macro alu_x.. dst a, d.
+	byte b. dst a.
+	src z. macro alu_x.. dst a, d.
+.end
+* c = a + b;
+add.begin
+	byte b. dst a.
+	byte b. dst a.
+	macro alu_y..
+	byte a. dst a.
+	byte a. dst a.
+	src z. macro alu_+..
+	byte c. dst a.
+	src z. macro alu_x.. dst a, d.
+.end
+* k--; 
+count.begin
+	begin for_done.
+	byte k. dst a.
+	byte k. dst a.
+	src z. macro alu_y-1.. dst a, d. jmp eq lt.
+	begin shift.
+	src z. macro alu_x.. jmp eq, lt, gt.
+.end
+for_done.begin
+	byte c. dst a.
+	byte c. dst a.
+.end
+.endtext
